@@ -1,0 +1,62 @@
+This is a mirror of http://www.vim.org/scripts/script.php?script_id=2894
+
+vikitasks is a distributed todo lists manager. It provides a quick 
+overview of priority/task lists maintained in several viki files. 
+Depending on your settings, you can quickly search all "homepages" 
+of intervikis or search only project-specific files. Buffers 
+containing task lists are added to the list of vikitasks. There is 
+also an option to view a list of current tasks on startup.
+
+
+Usage:
+    :VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
+
+
+Features:
+    - Collect tasks from viki's priority lists (see |viki-tasks|)
+    - Sort those tasks
+    - Browse tasks with a given date
+    - Optionally browse all tasks (incl. those without a date)
+
+
+Let's say you have the files:
+
+foo.txt: >
+    * Foo
+        #A 2009-12-13 Do this
+        #C 2009-12-20 :call @Anna What was it she wanted to tell me?
+        #A Whatever
+
+bar.txt: >
+    * Bar
+        #C 2009-12-24 :call @Bernie Wish him good luck
+        #D 2009-11-01 Do that
+
+Let's assume you have added both files to |g:vikitasks#files|. Switch to 
+the buffer foo.txt and call >
+
+    :VikiTasks!
+
+and you get the following list: >
+
+    Bar.txt|2| #D 2009-11-01 Do that
+    Foo.txt|2| #A 2009-12-13 Do this
+    Foo.txt|3| #C 2009-12-20 Call @Anna
+    Bar.txt|3| #C 2009-12-24 Wish @Bernie good luck
+
+If you do/had done this on the 15 December 2009, the third line would be 
+highlighted, i.e. the entries above the cursor refer to passed/missed 
+events. If you had called :VikiTasks! (behold the bang), then the 
+"Whatever" entry would have been included in the list too.
+
+If you had called >
+    
+    :VikiTasks current
+
+only the first two items would be listed.
+
+This week's tasks (i.e. the tasks that should be accomplished today or 
+within the following six days) could be listed with >
+    
+    :VikiTasks 6
+
