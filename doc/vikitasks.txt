@@ -8,8 +8,7 @@ files.
 
 
 Usage:
-    :VikiTasks[!] [SELECT] [GLOB PATTERNS]
-    :VikiTasksGrep[!] [REGEXP] [GLOB PATTERNS]
+    :VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
 
 
 Features:
@@ -38,7 +37,7 @@ bar.txt: >
 Let's assume you have added both files to |g:vikitasks_files|. Switch to 
 the buffer foo.txt and call >
 
-    :VikiTasks
+    :VikiTasks!
 
 and you get the following list: >
 
@@ -84,19 +83,23 @@ Also available via git: http://github.com/tomtom/vimtlib/
 ========================================================================
 Contents~
 
-        g:vikitasks_files ................ |g:vikitasks_files|
-        g:vikitasks_intervikis ........... |g:vikitasks_intervikis|
-        g:vikitasks_intervikis_ignored ... |g:vikitasks_intervikis_ignored|
-        g:vikitasks_qfl_viewer ........... |g:vikitasks_qfl_viewer|
-        g:vikitasks_rx_letters ........... |g:vikitasks_rx_letters|
-        g:vikitasks_rx_levels ............ |g:vikitasks_rx_levels|
-        g:vikitasks_cache ................ |g:vikitasks_cache|
+        g:vikitasks_startup_alarms ....... |g:vikitasks_startup_alarms|
+        g:vikitasks_scan_events .......... |g:vikitasks_scan_events|
         :VikiTasks ....................... |:VikiTasks|
-        :VikiTasksGrep ................... |:VikiTasksGrep|
         :VikiTasksAdd .................... |:VikiTasksAdd|
         :VikiTasksFiles .................. |:VikiTasksFiles|
+        :VikiTasksAlarms ................. |:VikiTasksAlarms|
+        g:vikitasks#files ................ |g:vikitasks#files|
+        g:vikitasks#files_ignored ........ |g:vikitasks#files_ignored|
+        g:vikitasks#intervikis ........... |g:vikitasks#intervikis|
+        g:vikitasks#intervikis_ignored ... |g:vikitasks#intervikis_ignored|
+        g:vikitasks#qfl_viewer ........... |g:vikitasks#qfl_viewer|
+        g:vikitasks#rx_letters ........... |g:vikitasks#rx_letters|
+        g:vikitasks#rx_levels ............ |g:vikitasks#rx_levels|
+        g:vikitasks#cache ................ |g:vikitasks#cache|
+        g:vikitasks#alarms ............... |g:vikitasks#alarms|
+        g:vikitasks#use_end_date ......... |g:vikitasks#use_end_date|
         vikitasks#Tasks .................. |vikitasks#Tasks()|
-        vikitasks#TasksGrep .............. |vikitasks#TasksGrep()|
         vikitasks#AddBuffer .............. |vikitasks#AddBuffer()|
         vikitasks#EditFiles .............. |vikitasks#EditFiles()|
 
@@ -104,8 +107,84 @@ Contents~
 ========================================================================
 plugin/vikitasks.vim~
 
-                                                    *g:vikitasks_files*
-g:vikitasks_files              (default: [])
+                                                    *g:vikitasks_startup_alarms*
+g:vikitasks_startup_alarms     (default: !has('clientserver') || len(split(serverlist(), '\n')) == 1)
+    Show alarms on pending tasks.
+    If 0, don't display alarms for pending tasks.
+    If n > 0, display alarms for pending tasks or tasks with a deadline in n 
+    days.
+
+                                                    *g:vikitasks_scan_events*
+g:vikitasks_scan_events        (default: 'BufWrite,BufWinEnter')
+    Scan a buffer on these events.
+
+                                                    *:VikiTasks*
+VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
+    CONSTRAINT defined which tasks should be displayed. Possible values 
+    for CONSTRAINT are:
+    
+      today            ... Show tasks that are due today
+      current          ... Show pending and today's tasks
+      NUMBER (of days) ... Show tasks that are due within N days
+      Nd               ... Tasks for the next N days
+      Nw               ... Tasks for the next N weeks
+      Nm               ... Tasks for the next N months
+      week             ... Tasks for the next week
+      month            ... Tasks for the next month
+      .                ... Show some tasks (see |g:vikitasks#rx_letters| 
+                           and |g:vikitasks#rx_levels|)
+      *                ... Show all tasks
+    
+    If N is prepended with + (e.g. "+2w"), tasks with a deadline in the 
+    past are hidden.
+    
+    The default value for CONSTRAINT is ".".
+    
+    If CONSTRAINT starts with "@" or ":" it is assumed to be a PATTERN -- 
+    see also |viki-tasks|.
+    
+    The |regexp| PATTERN is prepended with |\<| if it seems to be a word. 
+    The PATTERN is made case sensitive if it contains an upper-case letter 
+    and if 'smartcase' is true. Only tasks matching the PATTERN will be 
+    listed. Use "." to match all tasks.
+    
+    With the optional !, all files are rescanned. Otherwise cached 
+    information is used. Either scan all known files (|interviki|s and 
+    pages registered via |:VikiTasksAdd|) or files matching FILE_PATTERNS.
+    
+    The current buffer has to be a viki buffer. If it isn't, your 
+    |g:vikiHomePage|, which must be set, is opened first.
+    
+    Examples:
+        Show all cached tasks with a date: >
+            VikiTasks
+<     Rescan files and show all tasks: >
+            VikiTasks!
+<     Show all cached tasks for today: >
+            VikiTasks today
+<     Show all current cached tasks (today or with a deadline in the 
+    past) in a specified list of files: >
+            VikiTasks current Notes*.txt
+<
+
+                                                    *:VikiTasksAdd*
+:VikiTasksAdd
+    Add the current buffer to |g:vikitasks#files|.
+
+                                                    *:VikiTasksFiles*
+:VikiTasksFiles
+    Edit |g:vikitasks#files|. This allows you to remove buffers from the 
+    list.
+
+                                                    *:VikiTasksAlarms*
+:VikiTasksAlarms
+
+
+========================================================================
+autoload/vikitasks.vim~
+
+                                                    *g:vikitasks#files*
+g:vikitasks#files              (default: [])
     A list of glob patterns (or files) that will be searched for task 
     lists.
     Can be buffer-local.
@@ -113,93 +192,65 @@ g:vikitasks_files              (default: [])
     between editing sessions.
     Alternatively, add new items in ~/vimfiles/after/plugin/vikitasks.vim
 
-                                                    *g:vikitasks_intervikis*
-g:vikitasks_intervikis         (default: 0)
+                                                    *g:vikitasks#files_ignored*
+g:vikitasks#files_ignored      (default: [])
+    A list of |regexp| patterns for filenames that should not be 
+    scanned.
+
+                                                    *g:vikitasks#intervikis*
+g:vikitasks#intervikis         (default: 0)
     If non-null, automatically add the homepages of your intervikis to 
-    |g:vikitasks_files|.
+    |g:vikitasks#files|.
     Can be buffer-local.
 
-                                                    *g:vikitasks_intervikis_ignored*
-g:vikitasks_intervikis_ignored (default: [])
+                                                    *g:vikitasks#intervikis_ignored*
+g:vikitasks#intervikis_ignored (default: [])
     A list of ignored intervikis.
     Can be buffer-local.
 
-                                                    *g:vikitasks_qfl_viewer*
-g:vikitasks_qfl_viewer         (default: '')
+                                                    *g:vikitasks#qfl_viewer*
+g:vikitasks#qfl_viewer         (default: '')
     The viewer for the quickfix list. If empty, use |:TRagcw|.
 
-                                                    *g:vikitasks_rx_letters*
-g:vikitasks_rx_letters         (default: 'A-T')
+                                                    *g:vikitasks#rx_letters*
+g:vikitasks#rx_letters         (default: 'A-W')
     Item classes that should be included in the list when calling 
     |:VikiTasks|.
     A user-defined value must be set in |vimrc| before the plugin is 
     loaded.
 
-                                                    *g:vikitasks_rx_levels*
-g:vikitasks_rx_levels          (default: '1-5')
+                                                    *g:vikitasks#rx_levels*
+g:vikitasks#rx_levels          (default: '1-5')
     Item levels that should be included in the list when calling 
     |:VikiTasks|.
     A user-defined value must be set in |vimrc| before the plugin is 
     loaded.
 
-                                                    *g:vikitasks_cache*
-g:vikitasks_cache              (default: tlib#cache#Filename('vikitasks', 'files', 1))
+                                                    *g:vikitasks#cache*
+g:vikitasks#cache              (default: tlib#cache#Filename('vikitasks', 'files', 1))
     Cache file name.
     By default, use |tlib#cache#Filename()| to determine the file name.
 
-                                                    *:VikiTasks*
-VikiTasks[!] [SELECT] [FILE_PATTERNS]
-    SELECT items by date. Possible values for SELECT are: today, current, 
-    NUMBER (of days). If SELECT is *, all items are elegible.
-    Collect a list of tasks from a set of viki pages matching 
-    FILE_PATTERNS.
-    With the optional !, show all tasks not just those with a date
-    The current buffer has to be a viki buffer. If it isn't, your 
-    |g:vikiHomePage|, which must be set, is opened first.
-    
-    Examples:
-        Show all tasks with a date: >
-            VikiTasks
-<       Show all tasks: >
-            VikiTasks!
-<       Show all tasks for today: >
-            VikiTasks today
-<       Show all current tasks (today or with a deadline in the past) in a 
-        specified list of files: >
-            VikiTasks current Notes*.txt
-<
+                                                    *g:vikitasks#alarms*
+g:vikitasks#alarms             (default: {'all_tasks': 0, 'tasks': 'sometasks', 'constraint': 14})
+    Definition of the tasks that should be included in the Alarms list.
 
-                                                    *:VikiTasksGrep*
-:VikiTasksGrep[!] REGEXP [FILE PATTERNS]
-    Like |:VikiTasks| but display only those items matching REGEXP.
-    The |regexp| pattern is prepended with |\<| if it seems to be a word.
-
-                                                    *:VikiTasksAdd*
-:VikiTasksAdd
-    Add the current buffer to |g:vikitasks_files|.
-
-                                                    *:VikiTasksFiles*
-:VikiTasksFiles
-    Edit |g:vikitasks_files|. This allows you to remove buffers from the 
-    list.
-
-
-========================================================================
-autoload/vikitasks.vim~
+                                                    *g:vikitasks#use_end_date*
+g:vikitasks#use_end_date       (default: 1)
+    If true, the end-date of date ranges (FROM..TO) is significant.
 
                                                     *vikitasks#Tasks()*
-vikitasks#Tasks(?all=0, ?{'files': [], 'select': '', 'rx': ''})
+vikitasks#Tasks(?{'all_tasks': 0, 'cached': 1, 'files': [], 'constraint': '', 'rx': ''})
     If files is non-empty, use these files (glob patterns actually) 
-    instead of those defined in |g:vikitasks_files|.
-
-                                                    *vikitasks#TasksGrep()*
-vikitasks#TasksGrep(all_tasks, ?pattern='.', *files)
+    instead of those defined in |g:vikitasks#files|.
 
                                                     *vikitasks#AddBuffer()*
-vikitasks#AddBuffer(buffer)
+vikitasks#AddBuffer(buffer, ...)
+    Register BUFFER as a file that should be scanned for task lists.
 
                                                     *vikitasks#EditFiles()*
 vikitasks#EditFiles()
+    Edit the list of files.
 
 
 
