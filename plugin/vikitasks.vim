@@ -3,8 +3,8 @@
 " @GIT:         http://github.com/tomtom/vikitasks_vim/
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2009-12-13.
-" @Last Change: 2010-11-06.
-" @Revision:    226
+" @Last Change: 2012-01-21.
+" @Revision:    230
 " GetLatestVimScripts: 2894 0 :AutoInstall: vikitasks.vim
 " Search for task lists and display them in a list
 
@@ -33,7 +33,7 @@ endif
 if &cp || exists("loaded_vikitasks")
     finish
 endif
-let loaded_vikitasks = 3
+let loaded_vikitasks = 4
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -94,7 +94,8 @@ TLet g:vikitasks_scan_events = 'BufWritePost,BufWinEnter'
 " <   Show all current cached tasks (today or with a deadline in the 
 " past) in a specified list of files: >
 "         VikiTasks current Notes*.txt
-command! -bang -nargs=* VikiTasks call vikitasks#Tasks(vikitasks#GetArgs(!empty("<bang>"), [<f-args>]))
+command! -bang -nargs=* VikiTasks call vikitasks#Tasks(vikitasks#GetArgs(!empty("<bang>"), [<f-args>]), 0)
+command! -bang -nargs=* VikiTasksStatic call vikitasks#Tasks(vikitasks#GetArgs(!empty("<bang>"), [<f-args>]), 1)
 cabbr vikitasks VikiTasks
 
 
@@ -115,11 +116,7 @@ command! -count VikiTasksAlarms call vikitasks#Alarm(<count>)
 augroup VikiTasks
     autocmd!
     if g:vikitasks_startup_alarms
-        if has('vim_starting')
-            autocmd VimEnter *  call vikitasks#Alarm()
-        else
-            call vikitasks#Alarm()
-        endif
+        autocmd VimEnter *  call vikitasks#Alarm()
     endif
     if !empty(g:vikitasks_scan_events)
         exec 'autocmd '. g:vikitasks_scan_events .' * if exists("b:vikiEnabled") && b:vikiEnabled | call vikitasks#ScanCurrentBuffer(expand("<afile>:p")) | endif'
@@ -130,21 +127,3 @@ augroup END
 
 let &cpo = s:save_cpo
 unlet s:save_cpo
-finish
-
-CHANGES:
-
-0.1
-- Initial release
-
-0.2
-- :VikiTasks now takes a pattern as optional second argument. This 
-change makes the :VikiTasksGrep command obsolete, which was removed.
-- Moved the definition of some variables from plugin/vikitasks.vim to autoload/vikitasks.vim
-- Scan buffers on save
-- Require tlib 0.37
-- The arguments for :VikiTasks have changed
-
-0.3
-- vikitasks pseudo-mode-line: % vikitasks: letters=A-C:levels=1-3
-
