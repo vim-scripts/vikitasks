@@ -3,37 +3,30 @@
 " @GIT:         http://github.com/tomtom/vikitasks_vim/
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
 " @Created:     2009-12-13.
-" @Last Change: 2012-01-21.
-" @Revision:    230
+" @Last Change: 2012-09-19.
+" @Revision:    270
 " GetLatestVimScripts: 2894 0 :AutoInstall: vikitasks.vim
 " Search for task lists and display them in a list
 
 
-if !exists('g:loaded_tlib') || g:loaded_tlib < 39
+if !exists('g:loaded_tlib') || g:loaded_tlib < 100
     runtime plugin/02tlib.vim
-    if !exists('g:loaded_tlib') || g:loaded_tlib < 39
-        echoerr 'tlib >= 0.39 is required'
+    if !exists('g:loaded_tlib') || g:loaded_tlib < 100
+        echoerr 'tlib >= 1.00 is required'
         finish
     endif
 endif
-if !exists('g:loaded_viki') || g:loaded_viki < 319
-    runtime plugin/viki.vim
-    if !exists('g:loaded_viki') || g:loaded_viki < 319
-        echoerr 'viki >= 3.19 is required'
-        finish
-    endif
-endif
-if !exists('g:loaded_trag') || g:loaded_trag < 8
+if !exists('g:loaded_trag') || g:loaded_trag < 11
     runtime plugin/trag.vim
-    if !exists('g:loaded_trag') || g:loaded_trag < 8
-        echoerr 'trag >= 0.8 is required'
+    if !exists('g:loaded_trag') || g:loaded_trag < 11
+        echoerr 'trag >= 0.11 is required'
         finish
     endif
 endif
 if &cp || exists("loaded_vikitasks")
     finish
 endif
-let loaded_vikitasks = 4
+let loaded_vikitasks = 5
 
 let s:save_cpo = &cpo
 set cpo&vim
@@ -43,7 +36,7 @@ set cpo&vim
 " If 0, don't display alarms for pending tasks.
 " If n > 0, display alarms for pending tasks or tasks with a deadline in n 
 " days.
-TLet g:vikitasks_startup_alarms = !has('clientserver') || len(split(serverlist(), '\n')) <= 1
+TLet g:vikitasks_startup_alarms = (!has('clientserver') || len(split(serverlist(), '\n')) <= 1) && argc() == 0
 
 " Scan a buffer on these events.
 TLet g:vikitasks_scan_events = 'BufWritePost,BufWinEnter'
@@ -56,26 +49,30 @@ TLet g:vikitasks_scan_events = 'BufWritePost,BufWinEnter'
 "   current          ... Show pending and today's tasks
 "   NUMBER (of days) ... Show tasks that are due within N days
 "   Nd               ... Tasks for the next N days
-"   Nw               ... Tasks for the next N weeks
-"   Nm               ... Tasks for the next N months
-"   week             ... Tasks for the next week
-"   month            ... Tasks for the next month
+"   Nw               ... Tasks for the next N weeks (i.e. 7 days)
+"   Nm               ... Tasks for the next N months (i.e. 31 days)
+"   week             ... Tasks for the next week (i.e. 7 days)
+"   month            ... Tasks for the next month (i.e. 31 days)
 "   .                ... Show some tasks (see |g:vikitasks#rx_letters| 
 "                        and |g:vikitasks#rx_levels|)
 "   *                ... Show all tasks
+"
+" The default value for CONSTRAINT is ".".
 " 
 " If N is prepended with + (e.g. "+2w"), tasks with a deadline in the 
 " past are hidden.
 "
-" The default value for CONSTRAINT is ".".
+" If N is prepended with - (e.g. "-2w"), only tasks with a deadline in 
+" the past (in this example in the last two weeks) are shown. This 
+" implies showing all tasks as with "*".
 "
-" If CONSTRAINT starts with "@" or ":" it is assumed to be a PATTERN -- 
-" see also |viki-tasks|.
+" If CONSTRAINT doesn't match one of the constraints described above, it 
+" is assumed to be a PATTERN -- see also |viki-tasks|.
 "
 " The |regexp| PATTERN is prepended with |\<| if it seems to be a word. 
 " The PATTERN is made case sensitive if it contains an upper-case letter 
 " and if 'smartcase' is true. Only tasks matching the PATTERN will be 
-" listed. Use "." to match all tasks.
+" listed. Use "." to match any task.
 " 
 " With the optional !, all files are rescanned. Otherwise cached 
 " information is used. Either scan all known files (|interviki|s and 
@@ -96,27 +93,53 @@ TLet g:vikitasks_scan_events = 'BufWritePost,BufWinEnter'
 "         VikiTasks current Notes*.txt
 command! -bang -nargs=* VikiTasks call vikitasks#Tasks(vikitasks#GetArgs(!empty("<bang>"), [<f-args>]), 0)
 command! -bang -nargs=* VikiTasksStatic call vikitasks#Tasks(vikitasks#GetArgs(!empty("<bang>"), [<f-args>]), 1)
-cabbr vikitasks VikiTasks
+" cabbr vikitasks VikiTasks
 
+command! -count VikiTasksAlarms call vikitasks#Alarm(<count>)
 
 " :display: :VikiTasksAdd
 " Add the current buffer to |g:vikitasks#files|.
 command! VikiTasksAdd call vikitasks#AddBuffer(expand('%:p'))
 
 
-" :display: :VikiTasksFiles
+" Mark a task as done (see |vikitasks#ItemMarkDone()|).
+command! -count=0 VikiTasksDone call vikitasks#ItemMarkDone(<count>)
+
+
+" Archive final (see |g:vikitasks#final_categories|) tasks.
+command! VikiTasksArchive call vikitasks#ItemArchiveFinal()
+
+
+" :display: :VikiEditTasksFiles
 " Edit |g:vikitasks#files|. This allows you to remove buffers from the 
 " list.
-command! VikiTasksFiles call vikitasks#EditFiles()
+command! VikiEditTasksFiles call vikitasks#EditFiles()
 
 
-command! -count VikiTasksAlarms call vikitasks#Alarm(<count>)
+" :display: :VikiTasksFiles
+" Edit a file monitored by vikitasks.
+command! VikiTasksFiles call vikitasks#ListTaskFiles()
+
+
+" :display: :[COUNT]VikiTasksDueInDays [DAYS=0]
+" Mark a tasks as due in N days.
+command! -range -nargs=? VikiTasksDueInDays <line1>,<line2>call vikitasks#ItemMarkDueInDays(0, 0 + <q-args>)
+
+
+" :display: :[COUNT]VikiTasksDueInDays [WEEKS=1]
+" Mark a tasks as due in N weeks.
+command! -range -nargs=? VikiTasksDueInWeeks <line1>,<line2>call vikitasks#ItemMarkDueInWeeks(0, (0 + <q-args>) == 0 ? 1 : 0 + <q-args>)
 
 
 augroup VikiTasks
     autocmd!
+    " TLogVAR g:vikitasks_startup_alarms, has('vim_starting')
     if g:vikitasks_startup_alarms
-        autocmd VimEnter *  call vikitasks#Alarm()
+        if has('vim_starting')
+            autocmd VimEnter *  call vikitasks#Alarm()
+        else
+            call vikitasks#Alarm()
+        endif
     endif
     if !empty(g:vikitasks_scan_events)
         exec 'autocmd '. g:vikitasks_scan_events .' * if exists("b:vikiEnabled") && b:vikiEnabled | call vikitasks#ScanCurrentBuffer(expand("<afile>:p")) | endif'
