@@ -39,7 +39,7 @@ bar.txt: >
 Let's assume you have added both files to |g:vikitasks_files|. Switch to 
 the buffer foo.txt and call >
 
-    :VikiTasks!
+    :VikiTasks
 
 and you get the following list: >
 
@@ -89,6 +89,7 @@ Contents~
         g:vikitasks_scan_events ............... |g:vikitasks_scan_events|
         :VikiTasks ............................ |:VikiTasks|
         :VikiTasksStatic ...................... |:VikiTasksStatic|
+        :VikiTasksPaste ....................... |:VikiTasksPaste|
         :VikiTasksAlarms ...................... |:VikiTasksAlarms|
         :VikiTasksAdd ......................... |:VikiTasksAdd|
         :VikiTasksDone ........................ |:VikiTasksDone|
@@ -122,6 +123,7 @@ Contents~
         g:vikitasks#archive_date_fmt .......... |g:vikitasks#archive_date_fmt|
         g:vikitasks#final_categories .......... |g:vikitasks#final_categories|
         g:vikitasks#use_calendar .............. |g:vikitasks#use_calendar|
+        g:vikitasks#paste ..................... |g:vikitasks#paste|
         vikitasks#Tasks ....................... |vikitasks#Tasks()|
         vikitasks#AddBuffer ................... |vikitasks#AddBuffer()|
         vikitasks#RemoveBuffer ................ |vikitasks#RemoveBuffer()|
@@ -131,6 +133,7 @@ Contents~
         vikitasks#ListTaskFiles ............... |vikitasks#ListTaskFiles()|
         vikitasks#ItemMarkDueInDays ........... |vikitasks#ItemMarkDueInDays()|
         vikitasks#ItemMarkDueInWeeks .......... |vikitasks#ItemMarkDueInWeeks()|
+        vikitasks#ItemChangeCategory .......... |vikitasks#ItemChangeCategory()|
 
 
 ========================================================================
@@ -148,7 +151,7 @@ g:vikitasks_scan_events        (default: 'BufWritePost,BufWinEnter')
     Scan a buffer on these events.
 
                                                     *:VikiTasks*
-VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
+:VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
     CONSTRAINT defined which tasks should be displayed. Possible values 
     for CONSTRAINT are:
 
@@ -189,22 +192,31 @@ VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
     |g:vikiHomePage|, which must be set, is opened first.
 
     Examples:
-        Show all cached tasks with a date: >
-            VikiTasks
+      Show all cached tasks with a date: >
+            :VikiTasks
 <     Rescan files and show all tasks: >
-            VikiTasks!
+            :VikiTasks!
 <     Show all cached tasks for today: >
-            VikiTasks today
+            :VikiTasks today
 <     Show all current cached tasks (today or with a deadline in the 
-    past) in a specified list of files: >
-            VikiTasks current Notes*.txt
+      past) in a specified list of files: >
+            :VikiTasks current Notes*.txt
 <
 
                                                     *:VikiTasksStatic*
 :VikiTasksStatic
+    The same as |:VikiTasks| but the tasks list doesn't take the focus.
+
+                                                    *:VikiTasksPaste*
+:VikiTasksPaste[!] [ARGUMENTS...]
+    Paste the results of a VIKITASKSCOMMAND (default: VikiTasks) in a 
+    buffer. When called with a |bang| [!], create a new buffer. See 
+    |:VikiTasks| for the allowed ARGUMENTS.
 
                                                     *:VikiTasksAlarms*
-:VikiTasksAlarms
+:[count]VikiTasksAlarms
+    Display a list of alarms. Shows alarms due within N days.
+    If N is -1, uses |g:vikitasks#alarms| if any.
 
                                                     *:VikiTasksAdd*
 :VikiTasksAdd
@@ -228,12 +240,12 @@ VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
     Edit a file monitored by vikitasks.
 
                                                     *:VikiTasksDueInDays*
-:[COUNT]VikiTasksDueInDays [DAYS=0]
-    Mark a tasks as due in N days.
+:[count]VikiTasksDueInDays [DAYS=0]
+    Mark [count] task(s) as due in N days.
 
                                                     *:VikiTasksDueInWeeks*
-:[COUNT]VikiTasksDueInDays [WEEKS=1]
-    Mark a tasks as due in N weeks.
+:[count]VikiTasksDueInDays [WEEKS=1]
+    Mark [count] task(s) as due in N weeks.
 
 
 ========================================================================
@@ -378,10 +390,21 @@ g:vikitasks#use_calendar       (default: '')
     NOTE: This experimental feature is disabled by default. Enable it by 
     setting this variable to, e.g., "Calendar" in your |vimrc| file.
 
+                                                    *g:vikitasks#paste*
+g:vikitasks#paste              (default: {})
+    Define how to format the list when calling |:VikiTasksPaste|.
+    A dictionary with the fields (default values are marked with "*"):
+      filename: add*|group|none
+
                                                     *vikitasks#Tasks()*
 vikitasks#Tasks(?{'all_tasks': 0, 'cached': 1, 'files': [], 'constraint': '', 'rx': ''}, ?suspend=0)
     If files is non-empty, use these files (glob patterns actually) 
     instead of those defined in |g:vikitasks#files|.
+
+    suspend must be one of:
+      -1 ... Don't display a list
+       0 ... List takes the focus
+       1 ... Current buffer takes the focus
 
                                                     *vikitasks#AddBuffer()*
 vikitasks#AddBuffer(buffer, ...)
@@ -415,6 +438,10 @@ vikitasks#ItemMarkDueInDays(count, days)
                                                     *vikitasks#ItemMarkDueInWeeks()*
 vikitasks#ItemMarkDueInWeeks(count, weeks)
     Mark a tasks as due in N weeks.
+
+                                                    *vikitasks#ItemChangeCategory()*
+vikitasks#ItemChangeCategory(count, ...)
+    Change the category for the current and the next a:count tasks.
 
 
 

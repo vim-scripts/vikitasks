@@ -2,7 +2,7 @@
 " @Author:      Tom Link (mailto:micathom AT gmail com?subject=[vim])
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
-" @Revision:    981
+" @Revision:    1100
 
 
 " A list of glob patterns (or files) that will be searched for task 
@@ -100,12 +100,14 @@ TLet g:vikitasks#inputlist_params = {
             \             24 : {'key': 24, 'agent': 'vikitasks#AgentMarkDone', 'key_name': '<c-x>', 'help': 'Mark done'},
             \             4 : {'key': 4, 'agent': 'vikitasks#AgentDueDays', 'key_name': '<c-d>', 'help': 'Mark as due in N days'},
             \             23 : {'key': 23, 'agent': 'vikitasks#AgentDueWeeks', 'key_name': '<c-w>', 'help': 'Mark as due in N weeks'},
+            \             3 : {'key': 3, 'agent': 'vikitasks#AgentItemChangeCategory', 'key_name': '<c-c>', 'help': 'Change task category'},
             \     },
-            \     'vikitasks': extend(copy(g:tlib_keyagents_InputList_s),
+            \     'vikitasks': extend(copy(g:tlib#input#keyagents_InputList_s),
             \         {
             \             char2nr('x') : {'agent': 'vikitasks#AgentMarkDone', 'key_name': 'x', 'help': 'Mark done'},
             \             char2nr('d')  : {'agent': 'vikitasks#AgentDueDays', 'key_name': 'd', 'help': 'Mark as due in N days'},
             \             char2nr('w')  : {'agent': 'vikitasks#AgentDueWeeks', 'key_name': 'w', 'help': 'Mark as due in N weeks'},
+            \             char2nr('c') : {'agent': 'vikitasks#AgentItemChangeCategory', 'key_name': 'c', 'help': 'Change task category'},
             \            'unknown_key': {'agent': 'tlib#agent#Null', 'key_name': 'other keys', 'help': 'ignore key'},
             \         }
             \     )
@@ -147,6 +149,11 @@ TLet g:vikitasks#final_categories = 'XYZ'
 " setting this variable to, e.g., "Calendar" in your |vimrc| file.
 TLet g:vikitasks#use_calendar = ''
 " TLet g:vikitasks#use_calendar = exists(':Calendar') ? 'Calendar' : ''
+
+" Define how to format the list when calling |:VikiTasksPaste|.
+" A dictionary with the fields (default values are marked with "*"):
+"   filename: add*|group|none
+TLet g:vikitasks#paste = {}
 
 
 function! s:TaskLineRx(filetype, inline, sometasks, letters, levels) "{{{3
@@ -224,13 +231,20 @@ endf
 " :display: vikitasks#Tasks(?{'all_tasks': 0, 'cached': 1, 'files': [], 'constraint': '', 'rx': ''}, ?suspend=0)
 " If files is non-empty, use these files (glob patterns actually) 
 " instead of those defined in |g:vikitasks#files|.
+" 
+" suspend must be one of:
+"   -1 ... Don't display a list
+"    0 ... List takes the focus
+"    1 ... Current buffer takes the focus
 function! vikitasks#Tasks(...) "{{{3
     TVarArg ['args', {}], ['suspend', 0]
+    " TLogVAR args, suspend
 
     if get(args, 'cached', 1)
 
         let qfl = copy(s:Tasks())
         let files = get(args, 'files', [])
+        " TLogVAR files
         if !empty(files)
             for file in files
                 let file_rx = substitute(file, '\*', '.\\{-}', 'g')
@@ -259,6 +273,8 @@ function! vikitasks#Tasks(...) "{{{3
         " TLogVAR files
         call map(files, 'glob(v:val)')
         let files = split(join(files, "\n"), '\n')
+        let files = map(files, 's:CanonicFilename(v:val)')
+        let files = tlib#list#Uniq(files)
         " TLogVAR files
         if !empty(files)
             let qfl = trag#Grep('tasks', 1, files)
@@ -288,21 +304,29 @@ endf
 
 
 function! s:TasksList(qfl, args, suspend) "{{{3
+    " TLogVAR a:qfl, a:args, a:suspend
     let qfl = a:qfl
     call s:FilterTasks(qfl, a:args)
     call sort(qfl, "s:SortTasks")
     let i = s:GetCurrentTask(qfl, 0)
     call s:Setqflist(qfl, a:suspend ? i : -1)
-    call s:View(i, a:suspend)
+    if a:suspend >= 0
+        call s:View(i, a:suspend)
+    endif
+endf
+
+
+function! s:DueText() "{{{3
+    let break = repeat('^', (&columns - 20 - len(g:vikitasks#today)) / 2)
+    let text = join([break, g:vikitasks#today, break])
+    return text
 endf
 
 
 function! s:Setqflist(qfl, today) "{{{3
     " TLogVAR a:today
     if !empty(g:vikitasks#today) && len(a:qfl) > 1 && a:today > 1 && a:today < len(a:qfl) - 1
-        let break = repeat('^', (&columns - 20 - len(g:vikitasks#today)) / 2)
-        let text = join([break, g:vikitasks#today, break])
-        let qfl = insert(a:qfl, {'bufnr': 0, 'text': text}, a:today - 1)
+        let qfl = insert(a:qfl, {'bufnr': 0, 'text': s:DueText()}, a:today - 1)
         call setqflist(qfl)
     else
         call setqflist(a:qfl)
@@ -483,7 +507,7 @@ endf
 function! s:Files() "{{{3
     if !exists('s:files')
         let s:files = get(tlib#cache#Get(g:vikitasks#cache), 'files', [])
-        if !has('fname_case') || !&shellslash
+        if !has('fname_case') || g:tlib#dir#sep == '\'
             call map(s:files, 's:CanonicFilename(v:val)')
         endif
         " echom "DBG nfiles = ". len(s:files)
@@ -514,7 +538,7 @@ function! s:CanonicFilename(filename) "{{{3
     if !has('fname_case')
         let filename = tolower(filename)
     endif
-    if !&shellslash
+    if g:tlib#dir#sep == '\'
         let filename = substitute(filename, '\\', '/', 'g')
     endif
     return filename
@@ -537,13 +561,13 @@ function! s:MyFiles() "{{{3
         call filter(files, 'v:val !~ s:files_ignored')
     endif
     " TLogVAR files
-    if !has('fname_case') || !&shellslash
+    if !has('fname_case') || g:tlib#dir#sep == '\'
         call map(files, 's:CanonicFilename(v:val)')
     endif
     " TLogVAR g:vikitasks#sources.todotxt
     if g:vikitasks#sources.todotxt
         let todotxt = tlib#file#Join([g:vikitasks#todotxt_dir, 'todo.txt'])
-        if !has('fname_case') || !&shellslash
+        if !has('fname_case') || g:tlib#dir#sep == '\'
             let todotxt = s:CanonicFilename(todotxt)
         endif
         if filereadable(todotxt)
@@ -570,22 +594,31 @@ function! s:AddInterVikis(files) "{{{3
             if index(ivignored, matchstr(iv, '^\u\+')) == -1
                 " TLogVAR iv
                 let def = viki#GetLink(1, '[['. iv .']]', 0, '')
+                let file = def[1]
                 " TLogVAR def
-                if glob
+                if glob > 0
                     let suffix = viki#InterVikiSuffix(iv)
-                    let files = split(glob(tlib#file#Join([def[1]], '**/*'. suffix)), '\n')
+                    let dirpattern = tlib#file#Join([fnamemodify(file, ':p:h'), '**/*'. suffix], 1)
+                    call s:AddDirPattern(a:files, dirpattern)
                 else
-                    let files = [def[1]]
-                endif
-                for hp in files
-                    " TLogVAR hp, filereadable(hp), !isdirectory(hp), index(a:files, hp) == -1
-                    if filereadable(hp) && !isdirectory(hp) && index(a:files, hp) == -1
-                        call add(a:files, hp)
+                    if filereadable(file) && !isdirectory(file) && index(a:files, file) == -1
+                        call add(a:files, file)
                     endif
-                endfor
+                endif
             endif
         endfor
     endif
+endf
+
+
+function! s:AddDirPattern(files, dirpattern) "{{{3
+    let files = split(glob(a:dirpattern), '\n')
+    for hp in files
+        " TLogVAR hp, filereadable(hp), !isdirectory(hp), index(a:files, hp) == -1
+        if filereadable(hp) && !isdirectory(hp) && index(a:files, hp) == -1
+            call add(a:files, hp)
+        endif
+    endfor
 endf
 
 
@@ -652,7 +685,7 @@ endf
 " Display a list of alarms.
 " If ddays >= 0, the constraint value in |g:vikitasks#alarms| is set to 
 " ddays days.
-" If ddays is -1 and |g:vikitasks#alarms| is empty, not alarms will be 
+" If ddays is -1 and |g:vikitasks#alarms| is empty, no alarms will be 
 " listed.
 function! vikitasks#Alarm(...) "{{{3
     TVarArg ['ddays', -1]
@@ -916,6 +949,53 @@ function! vikitasks#ItemMarkDueInWeeks(count, weeks) "{{{3
 endf
 
 
+" Change the category for the current and the next a:count tasks.
+function! vikitasks#ItemChangeCategory(count, ...) "{{{3
+    if a:0 >= 1
+        let category = a:1
+    else
+        call inputsave()
+        let category = input('New task category [A-Z]: ')
+        call inputrestore()
+    endif
+    let category = toupper(category)
+    if category =~ '\C^[A-Z]$'
+        let rx = s:TasksRx('tasks')
+        " TLogVAR rx
+        for lnum in range(line('.'), line('.') + a:count)
+            let line = getline(lnum)
+            " TLogVAR lnum, line
+            if line =~ rx
+                let line = substitute(line, '^\C\s*#\zs\u', category, '')
+                " TLogVAR line
+                call setline(lnum, line)
+            endif
+        endfor
+    else
+        echohl WarningMsg
+        echom 'Invalid category (must be A-Z):' category
+        echohl NONE
+    endif
+endf
+
+
+" :nodoc:
+function! vikitasks#AgentItemChangeCategory(world, selected) "{{{3
+    call inputsave()
+    let category = toupper(input('New task category [A-Z]: '))
+    call inputrestore()
+    if category =~ '\C^[A-Z]$'
+        return trag#AgentWithSelected(a:world, a:selected, 'call vikitasks#ItemChangeCategory(0,'. string(category) .')')
+    else
+        echohl WarningMsg
+        echom 'Invalid category (must be A-Z):' category
+        echohl NONE
+        let a:world.state = 'redisplay'
+        return a:world
+    endif
+endf
+
+
 function! s:FinalRx() "{{{3
     return printf('\C[%s]', g:vikitasks#final_categories)
 endf
@@ -976,7 +1056,70 @@ endf
 
 " :nodoc:
 function! vikitasks#AgentDueWeeks(world, selected) "{{{3
+    call inputsave()
     let val = input("Number of weeks: ", 1)
+    call inputrestore()
     return trag#AgentWithSelected(a:world, a:selected, 'VikiTasksDueInWeeks '. val)
+endf
+
+
+" :nodoc:
+function! vikitasks#Paste(newbuffer, args) "{{{3
+    call vikitasks#Tasks(a:args, -1)
+    let mode_filename = get(g:vikitasks#paste, 'filename', 'add')
+    let lines = []
+    if mode_filename == 'group'
+        let due = s:DueText()
+        let qfld = {}
+        for item in getqflist()
+            if item.text != due
+                let bufname = fnamemodify(bufname(item.bufnr), ':p')
+                if !has_key(qfld, bufname)
+                    let qfld[bufname] = []
+                endif
+                call add(qfld[bufname], item)
+            endif
+        endfor
+    else
+        let qfld = {'*': getqflist()}
+    endif
+    for key in sort(keys(qfld))
+        if key != '*'
+            call add(lines, s:FormatPasteLink(key, 0))
+        endif
+        for item in qfld[key]
+            " TLogVAR item
+            let bufname = fnamemodify(bufname(item.bufnr), ':p')
+            if mode_filename == 'group'
+                call add(lines, repeat(' ', &sw) . item.text)
+            elseif mode_filename == 'add'
+                call add(lines, ' '. item.text .' ' . s:FormatPasteLink(bufname, 1))
+            endif
+        endfor
+        if key != '*'
+            call add(lines, '')
+        endif
+    endfor
+    silent! colder
+    " TLogVAR lines
+    if a:newbuffer
+        new
+        setf viki
+    endif
+    call append(line('.'), lines)
+    if a:newbuffer
+        0delete
+    endif
+endf
+
+
+function! s:FormatPasteLink(fname, inpars) "{{{3
+    if has('conceal')
+        let fmt = a:inpars ? '([[%s][%s]])' : '[[%s][%s]]'
+        let link = printf(fmt, a:fname, fnamemodify(a:fname, ':t'))
+    else
+        let link = printf('[[%s]]', a:fname)
+    endif
+    return link
 endf
 
