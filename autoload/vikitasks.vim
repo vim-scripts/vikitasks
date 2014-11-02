@@ -1,7 +1,7 @@
 " @Author:      Tom Link (mailto:micathom AT gmail com?subject=[vim])
 " @Website:     http://www.vim.org/account/profile.php?user_id=4037
 " @License:     GPL (see http://www.gnu.org/licenses/gpl.txt)
-" @Revision:    1841
+" @Revision:    1967
 
 scriptencoding utf-8
 
@@ -21,6 +21,17 @@ let s:files_ignored = join(g:vikitasks#files_ignored, '\|')
 
 " If true, completely ignore completed tasks.
 TLet g:vikitasks#ignore_completed_tasks = 1
+
+" If true, obey threshold information (t:YYYY-MM-DD), i.e. don't show 
+" the task before this date.
+TLet g:vikitasks#use_threshold = 1
+
+" If the value is > 0 and no t: option (see see 
+" |g:vikitasks#use_threshold|) is given for a task, hide tasks whose due 
+" date is more than N days in the future.
+"
+" The value will be ignored if |g:vikitasks#use_threshold| is false.
+TLet g:vikitasks#threshold_days = 90
 
 " If non-false, provide tighter integration with the vim viki plugin.
 TLet g:vikitasks#sources = {
@@ -96,14 +107,18 @@ TLet g:vikitasks#after_change_line_exec = ''
 " A useful value is |:update|.
 TLet g:vikitasks#after_change_buffer_exec = ''
 
+" If true, save _all_ modified buffers via |:wall|, when leaving the 
+" tasks list.
+TLet g:vikitasks#auto_save = 0
+
 " The parameters for |:TRagcw| when |g:vikitasks#qfl_viewer| is empty.
 " :read: TLet g:vikitasks#inputlist_params = {...}
 " :nodoc:
 TLet g:vikitasks#inputlist_params = {
-            \ 'trag_list_syntax': g:vikitasks#sources.viki ? 'viki' : '',
-            \ 'trag_list_syntax_nextgroup': '@vikiPriorityListTodo',
             \ 'trag_short_filename': 1,
+            \ 'index_next_syntax': 'vikitasksItem',
             \ 'GetBufferLines': function('vikitasks#GetBufferLines'),
+            \ 'on_leave': ['vikitasks#OnLeave'],
             \ 'scratch': '__VikiTasks__',
             \ 'key_map': {
             \     'default': {
@@ -175,6 +190,7 @@ TLet g:vikitasks#debug = 0
 
 " If non-null, convert cygwin filenames to windows format.
 TLet g:vikitasks#convert_cygwin = has('win32unix') && executable('cygpath')
+
 
 let s:tasks_rx = {}
 
@@ -423,7 +439,7 @@ endf
 function! s:ScanFiles(cfiles, ...) "{{{3
     let filetype0 = a:0 >= 1 ? a:1 : ''
     let file_defs = a:0 >= 2 ? a:2 : s:GetCachedFiles()
-    " TLogVAR a:cfiles, filetype0
+    " TLogVAR len(a:cfiles), filetype0
     call s:InitTrag()
     let qfl = trag#Grep('tasks', 1, copy(a:cfiles), filetype0)
     " TLogVAR len(qfl)
@@ -448,25 +464,40 @@ function! s:ScanFiles(cfiles, ...) "{{{3
     " TLogVAR new_file_defs
     " TLogVAR new_tasks
     let remove_tasks = []
-    for i in range(len(new_tasks))
-        " TLogVAR new_tasks[i]
-        let bufnr = new_tasks[i].bufnr
-        let cfilename = s:CanonicFilename(fnamemodify(bufname(bufnr), ':p'))
-        " TLogVAR cfilename
-        let new_tasks[i].filename = cfilename
-        " let filetype = empty(filetype0) ? s:GetFiletype(cfilename) : filetype0
-        let these_file_defs = has_key(new_file_defs, cfilename) ? new_file_defs : file_defs
-        let file_def = these_file_defs[cfilename]
-        let filetype = file_def.filetype
-        if filetype != 'viki'
-            let new_tasks[i].text = s:ConvertLine(these_file_defs, cfilename, filetype, new_tasks[i].text)
-        endif
-        if empty(new_tasks[i].text)
-            call add(remove_tasks, i)
-        else
-            call remove(new_tasks[i], 'bufnr')
-        endif
-    endfor
+    let ntasks = len(new_tasks)
+    call tlib#progressbar#Init(ntasks, 'VikiTasks: Scan %s', 20)
+    try
+        for i in range(ntasks)
+            " TLogVAR new_tasks[i]
+            let bufnr = new_tasks[i].bufnr
+            if bufnr > 0
+                let cfilename = s:CanonicFilename(fnamemodify(bufname(bufnr), ':p'))
+                call tlib#progressbar#Display(i, ' '. pathshorten(cfilename))
+                " TLogVAR cfilename
+                let new_tasks[i].filename = cfilename
+                " let filetype = empty(filetype0) ? s:GetFiletype(cfilename) : filetype0
+                let these_file_defs = has_key(new_file_defs, cfilename) ? new_file_defs : file_defs
+                if has_key(these_file_defs, cfilename)
+                    let file_def = these_file_defs[cfilename]
+                    let filetype = file_def.filetype
+                    " if filetype != 'viki'
+                    let new_tasks[i].text = s:ConvertLine(these_file_defs, cfilename, filetype, new_tasks[i].text)
+                    " endif
+                    if empty(new_tasks[i].text)
+                        call add(remove_tasks, i)
+                    else
+                        call remove(new_tasks[i], 'bufnr')
+                    endif
+                else
+                    echohl WarningMsg
+                    echom 'VikiTasks: Internal error: No filedef for' has_key(new_file_defs, cfilename) has_key(file_defs, cfilename) bufnr string(cfilename)
+                    echohl NONE
+                endif
+            endif
+        endfor
+    finally
+        call tlib#progressbar#Restore()
+    endtry
     " TLogVAR remove_tasks
     for i in remove_tasks
         call remove(new_tasks, i)
@@ -495,23 +526,31 @@ endf
 
 
 function! s:ConvertLine(file_defs, cfilename, filetype, line) "{{{3
-    if a:filetype == 'viki'
-        return a:line
-    else
+    let ftdef = vikitasks#ft#{a:filetype}#GetInstance()
+    if !empty(a:line) && has_key(ftdef, 'ConvertLine')
         let ftdef = vikitasks#ft#{a:filetype}#GetInstance()
-        let line1 = ftdef.ConvertLine(a:line)
-        if !empty(a:line) && line1 =~ vikitasks#TasksRx('tasks', ftdef)
+        let line = ftdef.ConvertLine(a:line)
+        if !empty(line) && line =~ vikitasks#TasksRx('tasks', ftdef)
             if !has_key(a:file_defs, a:cfilename)
                 throw 'VikiTasks: Internal error: No filedef for '. a:cfilename
             else
                 let mapsource = get(a:file_defs[a:cfilename], 'mapsource', {})
-                let mapsource[a:line] = line1
+                let mapsource[a:line] = line
                 let a:file_defs[a:cfilename].mapsource = mapsource
-                " TLogVAR a:filetype, a:line, line1
+                " TLogVAR a:filetype, a:line, line
             endif
         endif
-        return line1
+    else
+        let line = a:line
     endif
+    let line = s:CleanLine(line)
+    return line
+endf
+
+
+function! s:CleanLine(line) "{{{3
+    let line = substitute(a:line, '\<t:'. g:vikitasks#date_rx .'\s*', '', 'g')
+    return line
 endf
 
 
@@ -559,7 +598,7 @@ endf
 
 
 function! s:FilterTasks(tasks, args) "{{{3
-    " TLogVAR a:args
+    " TLogVAR len(a:tasks), a:args
 
     let rx = get(a:args, 'rx', '')
     if !empty(rx)
@@ -589,6 +628,7 @@ function! s:FilterTasks(tasks, args) "{{{3
     if !get(a:args, 'all_tasks', 0)
         call filter(a:tasks, '!empty(s:GetTaskDueDate(v:val.text, 0, g:vikitasks#use_unspecified_dates, a:args))')
         " TLogVAR len(a:tasks)
+
         let constraint = get(a:args, 'constraint', '.')
         " TLogVAR constraint
         if constraint !~ '^[+-]\?\d\+'
@@ -629,6 +669,17 @@ function! s:FilterTasks(tasks, args) "{{{3
         if from != 0 || to != 0
             call filter(a:tasks, 's:Select(v:val.text, from, to, a:args)')
         endif
+
+        let use_threshold = get(a:args, 'use_threshold', g:vikitasks#use_threshold)
+        if use_threshold
+            let today = strftime(g:vikitasks#date_fmt)
+            if g:vikitasks#threshold_days > 0
+                let threshold_date = strftime(g:vikitasks#date_fmt, localtime() + g:vikitasks#threshold_days * g:tlib#date#dayshift)
+            else
+                let threshold_date = ''
+            endif
+            call filter(a:tasks, 's:IsThresholdOk(v:val.text, today, threshold_date)')
+        endif
     endif
 endf
 
@@ -640,6 +691,9 @@ function! s:View(index, suspend) "{{{3
         if a:index > 1
             let w.initial_index = a:index
         endif
+        let w.format_item = 'vikitasks#FormatQFLE(v:val, s:world)'
+        let w.set_syntax = 'vikitasks#SetSyntax'
+        let w.dueline = s:DueText()
         call trag#QuickList(w, a:suspend)
     else
         exec g:vikitasks#qfl_viewer
@@ -647,6 +701,34 @@ function! s:View(index, suspend) "{{{3
     if a:suspend && bufnr != bufnr('%')
         let bufwinnr = bufwinnr(bufnr)
         exec bufwinnr 'wincmd w'
+    endif
+endf
+
+
+function! vikitasks#SetSyntax() dict "{{{3
+    syn match TTagedFilesFilenameSep / | /
+    syn match TTagedFilesFilename / | [^|]*$/ contains=TTagedFilesFilenameSep
+    hi def link TTagedFilesFilenameSep Special
+    hi def link TTagedFilesFilename Directory
+    let b:vikiMarkInexistent = 0
+    runtime syntax/viki.vim
+    if has('conceal')
+        syn match vikitasksDates /\s*\(created\|t\):\d\+-\d\+-\d\+/ contained conceal
+    endif
+    syn match vikitasksItem /#\(T: \+.\{-}\u.\{-}:\|\d*\u\d*\)\s.*$/ contains=vikiContact,vikiTag,@vikiPriorityListTodo,@vikiText,TTagedFilesFilename,vikitasksDates
+endf
+
+
+function! vikitasks#FormatQFLE(qfe, world) "{{{3
+    let text = get(a:qfe, "text")
+    let filename = trag#GetFilename(a:qfe)
+    if empty(filename) || text == a:world.dueline
+        return text
+    else
+        if get(a:world, 'trag_short_filename', '')
+            let filename = pathshorten(filename)
+        endif
+        return printf("%-". (&co / 2) ."s | %s#%d", text, filename, a:qfe.lnum)
     endif
 endf
 
@@ -692,6 +774,22 @@ function! s:GetTaskDueDate(task, use_end_date, use_unspecified, args) "{{{3
         let rv = ''
     endif
     " TLogVAR a:task, m, rv
+    return rv
+endf
+
+
+function! s:IsThresholdOk(task, today, threshold_date) "{{{3
+    " TLogVAR a:task, a:today
+    let t = matchstr(a:task, '\<t:\zs'. g:vikitasks#date_rx)
+    if !empty(t)
+        let rv = t <= a:today
+    elseif empty(a:threshold_date)
+        let rv = 1
+    else
+        let date = s:GetTaskDueDate(a:task, 0, 0, {})
+        let rv = empty(date) || date == '_' || date <= a:threshold_date
+    endif
+    " TLogVAR t, rv
     return rv
 endf
 
@@ -898,6 +996,7 @@ function! s:CollectTaskFiles(reset) "{{{3
     let taskfiles = sort(keys(s:file_defs))
     " TLogVAR filter(copy(taskfiles), 'v:val =~ ''\Ctodo.txt$''')
     " TLogVAR taskfiles
+    " TLogVAR len(taskfiles)
     return [taskfiles, s:file_defs]
 endf
 
@@ -1402,8 +1501,15 @@ function! vikitasks#AgentDueDays(world, selected) "{{{3
         exec s:calendar_window 'wincmd w'
         return world
     else
+        call inputsave()
         let val = input("Number of days: ", 1)
-        return trag#AgentWithSelected(a:world, a:selected, 'VikiTasksDueInDays '. val)
+        call inputrestore()
+        if empty(val)
+            let a:world.state = 'redisplay'
+            return a:world
+        else
+            return trag#AgentWithSelected(a:world, a:selected, 'VikiTasksDueInDays '. val)
+        endif
     endif
 endf
 
@@ -1430,7 +1536,12 @@ function! vikitasks#AgentDueWeeks(world, selected) "{{{3
     call inputsave()
     let val = input("Number of weeks: ", 1)
     call inputrestore()
-    return trag#AgentWithSelected(a:world, a:selected, 'VikiTasksDueInWeeks '. val)
+    if empty(val)
+        let a:world.state = 'redisplay'
+        return a:world
+    else
+        return trag#AgentWithSelected(a:world, a:selected, 'VikiTasksDueInWeeks '. val)
+    endif
 endf
 
 
@@ -1531,5 +1642,13 @@ function! vikitasks#Glob2Rx(pattern) "{{{3
         let rx = '\C'. rx
     endif
     return '\V'. rx
+endf
+
+
+function! vikitasks#OnLeave(w) "{{{3
+    " TLogVAR g:vikitasks#auto_save
+    if g:vikitasks#auto_save
+        wall
+    endif
 endf
 
