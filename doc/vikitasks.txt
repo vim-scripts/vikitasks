@@ -36,7 +36,7 @@ bar.txt: >
         #C 2009-12-24 Wish @Bernie good luck
         #D 2009-11-01 Do that
 
-Let's assume you have added both files to |g:vikitasks_files|. Switch to 
+Let's assume you have added both files to |g:vikitasks#files|. Switch to 
 the buffer foo.txt and call >
 
     :VikiTasks
@@ -60,7 +60,7 @@ If you had called >
 only the first two items would be listed.
 
 This week's tasks (i.e. the tasks that should be accomplished today or 
-within the following six days) could be listed with >
+within the following six days) can be listed with >
     
     :VikiTasks 6
 
@@ -73,8 +73,8 @@ Edit the vba file and type: >
     :so %
 
 See :help vimball for details. If you have difficulties or use vim 7.0, 
-please make sure, you have the current version of vimball
-(vimscript #1502) installed or update your runtime.
+please make sure that you have the current version of vimball
+(vimscript #1502) installed, or update your runtime.
 
 This script requires tlib (vimscript #1863), trag (vimscript #2033), and 
 viki (vimscript #861) to be installed.
@@ -134,8 +134,9 @@ Contents~
         vikitasks#ItemMarkDone ................. |vikitasks#ItemMarkDone()|
         vikitasks#ItemArchiveFinal ............. |vikitasks#ItemArchiveFinal()|
         vikitasks#ListTaskFiles ................ |vikitasks#ListTaskFiles()|
-        vikitasks#ItemMarkDueInDays ............ |vikitasks#ItemMarkDueInDays()|
-        vikitasks#ItemMarkDueInWeeks ........... |vikitasks#ItemMarkDueInWeeks()|
+        vikitasks#ItemsMarkDueInDays ........... |vikitasks#ItemsMarkDueInDays()|
+        vikitasks#ItemsMarkDueInWeeks .......... |vikitasks#ItemsMarkDueInWeeks()|
+        vikitasks#ItemsMarkDueInMonths ......... |vikitasks#ItemsMarkDueInMonths()|
         vikitasks#ItemChangeCategory ........... |vikitasks#ItemChangeCategory()|
         vikitasks#AgentPaste ................... |vikitasks#AgentPaste()|
         vikitasks#Glob2Rx ...................... |vikitasks#Glob2Rx()|
@@ -154,6 +155,7 @@ Contents~
         :VikiTasksFiles ........................ |:VikiTasksFiles|
         :VikiTasksDueInDays .................... |:VikiTasksDueInDays|
         :VikiTasksDueInWeeks ................... |:VikiTasksDueInWeeks|
+        :VikiTasksDueInMonths .................. |:VikiTasksDueInMonths|
 
 
 ========================================================================
@@ -166,7 +168,8 @@ g:vikitasks#files              (default: [])
     Can be buffer-local.
     If you add ! to 'viminfo', this variable will be automatically saved 
     between editing sessions.
-    Alternatively, add new items in ~/vimfiles/after/plugin/vikitasks.vim
+    Alternatively, add new items in the *after-directory* in 'runtimepath'
+    (e.g.  ~/vimfiles/after/plugin/vikitasks.vim)
 
                                                     *g:vikitasks#files_ignored*
 g:vikitasks#files_ignored      (default: ['_archived\.[^.]\+$'])
@@ -296,7 +299,7 @@ g:vikitasks#archive_filename_fmt (default: '"%s_archived". g:vikiNameSuffix')
 
                                                     *g:vikitasks#archive_header*
 g:vikitasks#archive_header     (default: ['* Archived tasks'])
-    A list of strings. The header for newly created tasks archives.
+    A list of strings. The header for newly created task archives.
 
                                                     *g:vikitasks#date_fmt*
 g:vikitasks#date_fmt           (default: "%Y-%m-%d")
@@ -304,7 +307,7 @@ g:vikitasks#date_fmt           (default: "%Y-%m-%d")
 
                                                     *g:vikitasks#archive_header_fmt*
 g:vikitasks#archive_header_fmt (default: "** " . g:vikitasks#date_fmt)
-    The date format string (see |strftime()|) for archived entries.
+    The archive header format string (see |strftime()|) for archived entries.
 
                                                     *g:vikitasks#final_categories*
 g:vikitasks#final_categories   (default: 'XYZ')
@@ -357,7 +360,7 @@ vikitasks#Tasks(?{'all_tasks': 0, 'cached': 1, 'files': [], 'constraint': '', 'r
 vikitasks#SetSyntax()
 
                                                     *vikitasks#FormatQFLE()*
-vikitasks#FormatQFLE(qfe, world)
+vikitasks#FormatQFLE(qfe)
 
                                                     *vikitasks#ResetCachedInfo()*
 vikitasks#ResetCachedInfo()
@@ -390,25 +393,30 @@ vikitasks#EditFiles()
 vikitasks#Alarm(?ddays = -1, ?use_cached = 1)
 
                                                     *vikitasks#ItemMarkDone()*
-vikitasks#ItemMarkDone(count)
-    Mark a N tasks as done, i.e. assign them to category X -- see also 
+vikitasks#ItemMarkDone(count, ...)
+    Mark N tasks as done, i.e. assign them to category X -- see also 
     |g:vikitasks#final_categories|.
 
                                                     *vikitasks#ItemArchiveFinal()*
-vikitasks#ItemArchiveFinal()
-    Archive final (see |g:vikitasks#final_categories|) tasks.
+vikitasks#ItemArchiveFinal(...)
+    Archive finalized (see |g:vikitasks#final_categories|) tasks.
 
                                                     *vikitasks#ListTaskFiles()*
 vikitasks#ListTaskFiles()
     Edit a file monitored by vikitasks.
 
-                                                    *vikitasks#ItemMarkDueInDays()*
-vikitasks#ItemMarkDueInDays(count, days)
-    Mark a tasks as due in N days.
+                                                    *vikitasks#ItemsMarkDueInDays()*
+vikitasks#ItemsMarkDueInDays(count, days, ...)
+    Mark task(s) as due in N days.
 
-                                                    *vikitasks#ItemMarkDueInWeeks()*
-vikitasks#ItemMarkDueInWeeks(count, weeks)
-    Mark a tasks as due in N weeks.
+                                                    *vikitasks#ItemsMarkDueInWeeks()*
+vikitasks#ItemsMarkDueInWeeks(count, weeks, ...)
+    Mark task(s) as due in N weeks.
+
+                                                    *vikitasks#ItemsMarkDueInMonths()*
+vikitasks#ItemsMarkDueInMonths(count, months, ...)
+    Mark task(s) as due in N months,
+    NOTE: A "month" means 30 days.
 
                                                     *vikitasks#ItemChangeCategory()*
 vikitasks#ItemChangeCategory(count, ...)
@@ -429,14 +437,17 @@ plugin/vikitasks.vim~
 
                                                     *g:vikitasks_startup_alarms*
 g:vikitasks_startup_alarms     (default: 0)
-    Show alarms on pending tasks.
-    If 0, don't display alarms for pending tasks.
-    If n > 0, display alarms for pending tasks or tasks with a deadline in n 
-    days.
+    An expression that determines whether to show alarms on pending tasks 
+    on startup.
+    If the expression evaluates to 0, don't display alarms for pending 
+    tasks.
+    If it evaluates to a value > 0, display alarms for pending tasks or 
+    tasks with a deadline in n days.
 
-    A useful value (for your |vimrc|) is: >
+    Possibly useful values (for your |vimrc|) are: >
 
-        let g:vikitasks_startup_alarms = (!has('clientserver') || len(split(serverlist(), '\n')) <= 1) && argc() == 0
+        let g:vikitasks_startup_alarms = "(!has('clientserver') || len(split(serverlist(), '\n')) <= 1) && argc() == 0"
+        let g:vikitasks_startup_alarms = has('clientserver') && v:servername == 'GVIM'
 
 <   This will display alarms when running the first instance of gvim 
     without arguments.
@@ -452,29 +463,28 @@ g:vikitasks_scan_patterns      (default: ['*.txt', '*.viki'])
 
                                                     *:VikiTasks*
 :VikiTasks[!] [CONSTRAINT] [PATTERN] [FILE_PATTERNS]
-    CONSTRAINT defined which tasks should be displayed. Possible values 
-    for CONSTRAINT are:
+    CONSTRAINT constrains which tasks should be displayed. Possible values
+    are:
 
       today            ... Show tasks that are due today
-      current          ... Show pending and today's tasks
+      current          ... Show today's tasks and pending tasks
       NUMBER (of days) ... Show tasks that are due within N days
       Nd               ... Tasks for the next N days
       Nw               ... Tasks for the next N weeks (i.e. 7 days)
       Nm               ... Tasks for the next N months (i.e. 31 days)
       week             ... Tasks for the next week (i.e. 7 days)
       month            ... Tasks for the next month (i.e. 31 days)
-      .                ... Show some tasks (see |g:vikitasks#rx_letters| 
+      .                ... Show some tasks (see |g:vikitasks#rx_categories| 
                            and |g:vikitasks#rx_levels|)
       *                ... Show all tasks
 
     The default value for CONSTRAINT is ".".
 
-    If N is prepended with + (e.g. "+2w"), tasks with a deadline in the 
-    past are hidden.
+    Prepend + to N (e.g. "+2w") to hide tasks with a deadline in the past.
 
-    If N is prepended with - (e.g. "-2w"), only tasks with a deadline in 
-    the past (in this example in the last two weeks) are shown. This 
-    implies showing all tasks as with "*".
+    Prepend - to N (e.g. "-2w") to show only tasks with a deadline in 
+    the past (in this example in the last two weeks). This implies showing 
+    all tasks, as with "*".
 
     If CONSTRAINT doesn't match one of the constraints described above, it 
     is assumed to be a PATTERN -- see also |viki-tasks|.
@@ -509,14 +519,14 @@ g:vikitasks_scan_patterns      (default: ['*.txt', '*.viki'])
 
                                                     *:VikiTasksPaste*
 :VikiTasksPaste[!] [ARGUMENTS...]
-    Paste the results of a VIKITASKSCOMMAND (default: VikiTasks) in a 
+    Paste the results of a VIKITASKSCOMMAND (default: |:VikiTasks|) in a 
     buffer. When called with a |bang| [!], create a new buffer. See 
     |:VikiTasks| for the allowed ARGUMENTS.
 
                                                     *:VikiTasksAlarms*
 :[count]VikiTasksAlarms
     Display a list of alarms. Shows alarms due within N days.
-    If N is -1, uses |g:vikitasks#alarms| if any.
+    If N is -1, uses |g:vikitasks#alarms|, if any.
 
                                                     *:VikiTasksAdd*
 :VikiTasksAdd
@@ -528,7 +538,7 @@ g:vikitasks_scan_patterns      (default: ['*.txt', '*.viki'])
 
                                                     *:VikiTasksArchive*
 :VikiTasksArchive
-    Archive final (see |g:vikitasks#final_categories|) tasks.
+    Archive finalized tasks (see |g:vikitasks#final_categories|).
 
                                                     *:VikiEditTasksFiles*
 :VikiEditTasksFiles
@@ -544,8 +554,12 @@ g:vikitasks_scan_patterns      (default: ['*.txt', '*.viki'])
     Mark [count] task(s) as due in N days.
 
                                                     *:VikiTasksDueInWeeks*
-:[count]VikiTasksDueInDays [WEEKS=1]
+:[count]VikiTasksDueInWeeks [WEEKS=1]
     Mark [count] task(s) as due in N weeks.
+
+                                                    *:VikiTasksDueInMonths*
+:[count]VikiTasksDueInMonths [MONTHS=1]
+    Mark [count] task(s) as due in N months.
 
 
 
